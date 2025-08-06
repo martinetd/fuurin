@@ -41,7 +41,8 @@ fn main() -> Result<()> {
     let mut siv = cursive::default();
     siv.add_global_callback('q', |s| s.quit());
 
-    let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
+    let mut stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
+    stream_handle.log_on_drop(false);
     let mixer = stream_handle.mixer();
 
     // add all the files
