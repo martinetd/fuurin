@@ -36,6 +36,27 @@ fn add_path(
     Ok(())
 }
 
+fn add_to_all(s: &mut cursive::Cursive, add: isize) {
+    let Some(cbs) = s.call_on_name("sliders_list", |list: &mut ListView| {
+        let mut cbs = vec![];
+        list.call_on_all(
+            &cursive::view::Selector::Name("slider"),
+            |slider: &mut SliderView| {
+                let val = slider.get_value().saturating_add_signed(add).min(24);
+                if let cursive::event::EventResult::Consumed(Some(cb)) = slider.set_value(val) {
+                    cbs.push(cb);
+                }
+            },
+        );
+        cbs
+    }) else {
+        return;
+    };
+    for cb in cbs {
+        cb(s);
+    }
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     let mut siv = cursive::default();
@@ -87,22 +108,26 @@ fn main() -> Result<()> {
     for stream in streams {
         list = list.child(
             &stream.filename,
-            SliderView::horizontal(10).value(0).on_change(move |_s, v| {
-                if v == 0 {
-                    stream.sink.pause()
-                } else {
-                    stream.sink.play()
-                };
-                stream.sink.set_volume(v as f32 / 10.);
-            }),
+            SliderView::horizontal(25)
+                .value(0)
+                .on_change(move |_s, v| {
+                    if v == 0 {
+                        stream.sink.pause()
+                    } else {
+                        stream.sink.play()
+                    };
+                    stream.sink.set_volume(v as f32 / 25.);
+                })
+                .with_name("slider"),
         );
     }
-    siv.add_layer(
-        Dialog::new()
-            .title("Noises")
-            .content(list)
-            .with_name("main"),
-    );
+    let dialog = Dialog::new()
+        .title("Noises")
+        .content(list.with_name("sliders_list"));
+
+    siv.add_global_callback('+', |s| add_to_all(s, 1));
+    siv.add_global_callback('-', |s| add_to_all(s, -1));
+    siv.add_layer(dialog);
     siv.run();
 
     Ok(())
