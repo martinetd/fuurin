@@ -1,41 +1,41 @@
 use anyhow::Result;
 use rodio::Source;
 
+struct Stream {
+    filename: String,
+    sink: rodio::Sink,
+}
+
 fn main() -> Result<()> {
-    /*
-    let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
-    let sink = rodio::Sink::connect_new(stream_handle.mixer());
-
-    let file = std::fs::File::open("sounds/city.ogg")?;
-    sink.append(rodio::Decoder::try_from(file)?);
-    let file = std::fs::File::open("sounds/rain.ogg")?;
-    sink.append(rodio::Decoder::try_from(file)?);
-
-    sink.sleep_until_end();
-    */
-    //    let (controller, mixer) = rodio::mixer::mixer(2, 44_100);
     let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
     let mixer = stream_handle.mixer();
-    //  let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
-    //sink.append(mixer);
-    println!("1");
-    let file = std::fs::File::open("sounds/rain.ogg")?;
-    let sink = rodio::Sink::connect_new(mixer);
-    sink.append(rodio::Decoder::try_from(file)?.repeat_infinite());
-    sink.play();
+    // add all the files
+    let mut streams = vec![];
+    for f in std::fs::read_dir("sounds")? {
+        let path = f?.path();
+        let file = std::fs::File::open(&path)?;
+        let sink = rodio::Sink::connect_new(mixer);
+        let decoded = match rodio::Decoder::try_from(file) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("Could not read {path:?}: {e:?}");
+                continue;
+            }
+        };
+        sink.append(decoded.repeat_infinite());
+        sink.set_volume(0.5);
+        streams.push(Stream {
+            filename: "rain".to_string(),
+            sink,
+        });
+    }
 
     let source = rodio::source::SineWave::new(440.0)
         .take_duration(std::time::Duration::from_secs_f32(0.25))
         .amplify(0.20);
     mixer.add(source);
 
-    let file = std::fs::File::open("sounds/city.ogg")?;
-    mixer.add(rodio::Decoder::try_from(file)?);
-    println!("1");
-    println!("2");
     std::thread::sleep(std::time::Duration::from_secs(10));
-    //    mixer.sleep_until_end();
-    println!("3");
     Ok(())
 }
