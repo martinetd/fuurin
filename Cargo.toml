@@ -3,6 +3,7 @@ name = "fuurin"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
+rust-version = "1.74.0" # clap
 
 [dependencies]
 anyhow = "1.0.98"
