@@ -8,6 +8,26 @@ struct Stream {
     sink: rodio::Sink,
 }
 
+fn add_path(
+    streams: &mut Vec<Stream>,
+    mixer: &rodio::mixer::Mixer,
+    path: &std::path::Path,
+) -> Result<()> {
+    let file = std::fs::File::open(path)?;
+    let sink = rodio::Sink::connect_new(mixer);
+    let decoded = rodio::Decoder::try_from(file)?;
+    sink.append(decoded.repeat_infinite());
+    sink.set_volume(0.);
+    sink.pause();
+    let filename = path
+        .file_stem()
+        .context("no filename?")?
+        .to_string_lossy()
+        .into();
+    streams.push(Stream { filename, sink });
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut siv = cursive::default();
     siv.add_global_callback('q', |s| s.quit());
@@ -18,25 +38,13 @@ fn main() -> Result<()> {
     // add all the files
     let mut streams = vec![];
     for f in std::fs::read_dir("sounds")? {
-        let path = f?.path();
-        let file = std::fs::File::open(&path)?;
-        let sink = rodio::Sink::connect_new(mixer);
-        let decoded = match rodio::Decoder::try_from(file) {
-            Ok(d) => d,
-            Err(e) => {
-                println!("Could not read {path:?}: {e:?}");
-                continue;
-            }
+        let Ok(f) = f else {
+            continue;
         };
-        sink.append(decoded.repeat_infinite());
-        sink.set_volume(0.);
-        sink.pause();
-        let filename = path
-            .file_stem()
-            .context("no filename?")?
-            .to_string_lossy()
-            .into();
-        streams.push(Stream { filename, sink });
+        let path = f.path();
+        if let Err(e) = add_path(&mut streams, mixer, &path) {
+            println!("Could not add {f:?}: {e:?}");
+        }
     }
     let mut list = ListView::new();
     for stream in streams {
