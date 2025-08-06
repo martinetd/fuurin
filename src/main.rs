@@ -3,6 +3,7 @@ use clap::Parser;
 use cursive::traits::*;
 use cursive::views::{Dialog, ListView, SliderView};
 use rodio::Source;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(version, about, long_about = Some("Mix up sounds from directories"))]
@@ -13,7 +14,7 @@ struct Args {
 
 struct Stream {
     filename: String,
-    sink: rodio::Sink,
+    sink: Arc<rodio::Sink>,
 }
 
 fn add_path(
@@ -32,7 +33,10 @@ fn add_path(
         .context("no filename?")?
         .to_string_lossy()
         .into();
-    streams.push(Stream { filename, sink });
+    streams.push(Stream {
+        filename,
+        sink: Arc::new(sink),
+    });
     Ok(())
 }
 
@@ -84,19 +88,24 @@ fn main() -> Result<()> {
         bail!("No media found");
     }
     let mut list = ListView::new();
-    for stream in streams {
+    for stream in &streams {
+        let sink = stream.sink.clone();
         list = list.child(
             &stream.filename,
             SliderView::horizontal(10).value(0).on_change(move |_s, v| {
                 if v == 0 {
-                    stream.sink.pause()
+                    sink.pause()
                 } else {
-                    stream.sink.play()
+                    sink.play()
                 };
-                stream.sink.set_volume(v as f32 / 10.);
+                sink.set_volume(v as f32 / 10.);
             }),
         );
     }
+    let streams_clonable = streams.iter().map(|&s| s.sink.clone()).collect();
+    let streams_clone = streams_clonable.clone();
+    siv.add_global_callback('+', move |_s| streams_clone.iter().map(|s| s.set_volume(:w
+                );
     siv.add_layer(
         Dialog::new()
             .title("Noises")
