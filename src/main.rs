@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use cursive::event::EventResult;
 use cursive::traits::*;
 use cursive::views::{Dialog, ListView, SliderView};
 use rodio::Source;
@@ -36,25 +37,34 @@ fn add_path(
     Ok(())
 }
 
-fn add_to_all(s: &mut cursive::Cursive, add: isize) {
-    let Some(cbs) = s.call_on_name("sliders_list", |list: &mut ListView| {
-        let mut cbs = vec![];
+fn cb_to_all<F>(s: &mut cursive::Cursive, mut cb: F)
+where
+    F: FnMut(&mut SliderView) -> cursive::event::EventResult + 'static,
+{
+    let Some(effects) = s.call_on_name("sliders_list", |list: &mut ListView| {
+        let mut effects = vec![];
         list.call_on_all(
             &cursive::view::Selector::Name("slider"),
             |slider: &mut SliderView| {
-                let val = slider.get_value().saturating_add_signed(add).min(24);
-                if let cursive::event::EventResult::Consumed(Some(cb)) = slider.set_value(val) {
-                    cbs.push(cb);
+                if let EventResult::Consumed(Some(effect)) = cb(slider) {
+                    effects.push(effect)
                 }
             },
         );
-        cbs
+        effects
     }) else {
         return;
     };
-    for cb in cbs {
-        cb(s);
+    for effect in effects {
+        effect(s);
     }
+}
+
+fn add_to_all(s: &mut cursive::Cursive, add: isize) {
+    cb_to_all(s, move |slider: &mut SliderView| {
+        let val = slider.get_value().saturating_add_signed(add).min(24);
+        slider.set_value(val)
+    })
 }
 
 fn main() -> Result<()> {
@@ -127,6 +137,8 @@ fn main() -> Result<()> {
 
     siv.add_global_callback('+', |s| add_to_all(s, 1));
     siv.add_global_callback('-', |s| add_to_all(s, -1));
+    let mut vols = vec![];
+    siv.add_global_callback(' ', |s| cb_to_all(s, |slider| EventResult::Ignored));
     siv.add_layer(dialog);
     siv.run();
 
