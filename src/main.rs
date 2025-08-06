@@ -52,7 +52,7 @@ fn main() -> Result<()> {
             Ok(readdir) => readdir,
             Err(e) if e.kind() == std::io::ErrorKind::NotADirectory => {
                 let path = std::path::Path::new(&dir);
-                if let Err(e) = add_path(&mut streams, mixer, &path) {
+                if let Err(e) = add_path(&mut streams, mixer, path) {
                     println!("Could not add {path:?}: {e:?}");
                 }
                 continue;
