@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 cursive = "0.21.1"
-rodio = { version = "0.21.1", default-features = false, features = ["lewton", "playback"] }
+rodio = "0.21.1"
