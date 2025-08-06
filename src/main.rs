@@ -1,7 +1,15 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use clap::Parser;
 use cursive::traits::*;
 use cursive::views::{Dialog, ListView, SliderView};
 use rodio::Source;
+
+#[derive(Parser)]
+#[command(version, about, long_about = Some("Mix up sounds from directories"))]
+struct Args {
+    #[arg(default_values_t = vec!["sounds".to_string()])]
+    dirs: Vec<String>,
+}
 
 struct Stream {
     filename: String,
@@ -29,6 +37,7 @@ fn add_path(
 }
 
 fn main() -> Result<()> {
+    let args = Args::parse();
     let mut siv = cursive::default();
     siv.add_global_callback('q', |s| s.quit());
 
@@ -37,14 +46,30 @@ fn main() -> Result<()> {
 
     // add all the files
     let mut streams = vec![];
-    for f in std::fs::read_dir("sounds")? {
-        let Ok(f) = f else {
+    for dir in args.dirs {
+        let Ok(readdir) = std::fs::read_dir(dir) else {
             continue;
         };
-        let path = f.path();
-        if let Err(e) = add_path(&mut streams, mixer, &path) {
-            println!("Could not add {f:?}: {e:?}");
+        for f in readdir {
+            let Ok(f) = f else {
+                continue;
+            };
+            let path = f.path();
+            match path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default()
+            {
+                "ogg" | "mp3" | "wav" => (),
+                _ => continue,
+            }
+            if let Err(e) = add_path(&mut streams, mixer, &path) {
+                println!("Could not add {f:?}: {e:?}");
+            }
         }
+    }
+    if streams.is_empty() {
+        bail!("No media found");
     }
     let mut list = ListView::new();
     for stream in streams {
