@@ -10,6 +10,10 @@ use std::sync::Arc;
 struct Args {
     #[arg(default_values_t = vec!["sounds".to_string()])]
     dirs: Vec<String>,
+    #[arg(long, default_value_t = 25)]
+    volume_granularity: u8,
+    #[arg(long, default_value_t = 0)]
+    start_volume: u8,
 }
 
 struct Stream {
@@ -20,14 +24,17 @@ struct Stream {
 fn add_path(
     streams: &mut Vec<Stream>,
     mixer: &rodio::mixer::Mixer,
+    start_volume: f32,
     path: &std::path::Path,
 ) -> Result<()> {
     let file = std::fs::File::open(path)?;
     let sink = rodio::Sink::connect_new(mixer);
     let decoded = rodio::Decoder::try_from(file)?;
     sink.append(decoded.repeat_infinite());
-    sink.set_volume(0.);
-    sink.pause();
+    sink.set_volume(start_volume);
+    if start_volume == 0. {
+        sink.pause();
+    }
     let filename = path
         .file_stem()
         .context("no filename?")?
@@ -69,6 +76,7 @@ fn main() -> Result<()> {
     let mut stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
     stream_handle.log_on_drop(false);
     let mixer = stream_handle.mixer();
+    let start_volume = args.start_volume as f32 / args.volume_granularity as f32;
 
     // add all the files
     let mut streams = vec![];
@@ -77,7 +85,7 @@ fn main() -> Result<()> {
             Ok(readdir) => readdir,
             Err(e) if e.kind() == std::io::ErrorKind::NotADirectory => {
                 let path = std::path::Path::new(&dir);
-                if let Err(e) = add_path(&mut streams, mixer, path) {
+                if let Err(e) = add_path(&mut streams, mixer, start_volume, path) {
                     println!("Could not add {path:?}: {e:?}");
                 }
                 continue;
@@ -100,7 +108,7 @@ fn main() -> Result<()> {
                 "ogg" | "mp3" | "wav" => (),
                 _ => continue,
             }
-            if let Err(e) = add_path(&mut streams, mixer, &path) {
+            if let Err(e) = add_path(&mut streams, mixer, start_volume, &path) {
                 println!("Could not add {path:?}: {e:?}");
             }
         }
@@ -113,15 +121,15 @@ fn main() -> Result<()> {
         let sink = stream.sink.clone();
         list = list.child(
             &stream.filename,
-            SliderView::horizontal(25)
-                .value(0)
+            SliderView::horizontal(args.volume_granularity.into())
+                .value(args.start_volume.into())
                 .on_change(move |_s, v| {
                     if v == 0 {
                         sink.pause()
                     } else {
                         sink.play()
                     };
-                    sink.set_volume(v as f32 / 10.);
+                    sink.set_volume(v as f32 / args.volume_granularity as f32);
                 })
                 .with_name("slider"),
         );
