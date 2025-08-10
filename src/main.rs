@@ -136,22 +136,27 @@ fn main() -> Result<()> {
     }
     let dialog = Dialog::new()
         .title("Noises")
-        .content(list.with_name("sliders_list"));
+        .content(list.with_name("sliders_list"))
+        .with_name("main");
 
     siv.add_global_callback('+', |s| add_to_all(s, 1));
     siv.add_global_callback('-', |s| add_to_all(s, -1));
     let streams_clone: Vec<_> = streams.iter().map(|s| s.sink.clone()).collect();
     let mut paused = false;
-    siv.add_global_callback(' ', move |_s| {
+    siv.add_global_callback(' ', move |s| {
         if paused {
             streams_clone.iter().for_each(|stream| {
                 if stream.volume() != 0. {
                     stream.play()
                 }
             });
+            s.call_on_name("main", |view: &mut Dialog| view.set_title("Noises"));
             paused = false;
         } else {
             streams_clone.iter().for_each(|stream| stream.pause());
+            s.call_on_name("main", |view: &mut Dialog| {
+                view.set_title("Noises (paused)")
+            });
             paused = true;
         }
     });
