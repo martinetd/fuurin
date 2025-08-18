@@ -10,7 +10,7 @@ Get some sound files that loop well, examples can be found in the following repo
 Then just play it all and enjoy.
 
 - arrow keys move single sliders
-- +/- move all sliders
+- ctrl+left/right move all sliders
 - space to pause all
 - 'q' to quit
 
