@@ -3,9 +3,8 @@ use clap::Parser;
 use crossterm::event::{self, KeyCode, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::palette::tailwind;
-use ratatui::style::Stylize;
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, LineGauge, Paragraph};
+use ratatui::style::{Style, Stylize};
+use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use rodio::Source;
 
 #[derive(Parser)]
@@ -95,6 +94,8 @@ impl State {
     fn toggle_playpause(&mut self) {
         self.paused = !self.paused;
         let apply = if self.paused {
+            // XXX rodio uses too much cpu even when all sinks are paused,
+            // try to find a better way to pause the whole mixer/output...
             rodio::Sink::pause
         } else {
             rodio::Sink::play
@@ -124,8 +125,8 @@ impl State {
         }
     }
     fn render(&self, frame: &mut ratatui::Frame) {
-        use Constraint::{Fill, Length, Min};
-        let layout = Layout::vertical([Length(2), Fill(1), Min(5), Fill(1)]);
+        use Constraint::{Length, Max, Min};
+        let layout = Layout::vertical([Length(2), Max(5), Min(5), Max(5)]);
         let [header, _centering_pre, main, _centering_post] = frame.area().layout(&layout);
 
         // header
@@ -139,49 +140,71 @@ impl State {
 
         // scrollbars
 
-        // XXX get height to check if it doesn't fit and only pick x elements around
-        // selected
-        // Also use multiline gauge if there is lots of room?
-        let num = self.streams.len();
-        let mut layout = Vec::with_capacity(num);
-        for _ in 0..num {
-            layout.push(Length(1));
+        let usable_height = main.height;
+        let num = self.streams.len() as u16;
+        let lines_per_widget = usable_height / num;
+        let mut layout = Vec::with_capacity(num as usize);
+        for _ in 0..num.min(usable_height) {
+            layout.push(Length(lines_per_widget.max(1)));
         }
         let layout = Layout::vertical(&layout);
         let lines = main.layout_vec(&layout);
         for (i, line) in lines.into_iter().enumerate() {
+            let i = if lines_per_widget != 0 {
+                i
+            } else {
+                // we don't have enough lines, center around selected
+                match self.selected as u16 {
+                    s if s < usable_height / 2 => i,
+                    s if num - s - 1 < usable_height / 2 => {
+                        // i goes from 0 to usable_height - 1 so
+                        // we want i == usable_height - 1 => num - 1
+                        i + num as usize - usable_height as usize
+                    }
+                    _ => i + self.selected - usable_height as usize / 2,
+                }
+            };
+
             let stream = &self.streams[i];
             let ratio = stream.volume as f64 / self.volume_granularity as f64;
             let layout = Layout::horizontal([
                 Length(10),
-                Length(self.longest_filename as u16 + 1),
+                Length(self.longest_filename as u16 + 7 /* ' 100.0% ' */),
                 Min(5),
                 Length(10),
             ]);
             let [_padding_left, label_area, gauge_area, _padding_right] = line.layout(&layout);
 
+            let title = format!(
+                "{:width$} {:3.0}%",
+                stream.filename,
+                ratio * 100.,
+                width = self.longest_filename
+            );
             let label = Block::new()
                 .borders(Borders::NONE)
-                .title(stream.filename.as_str())
+                .title(title)
                 .fg(tailwind::SLATE.c200);
             frame.render_widget(label, label_area);
 
             let filled = if i == self.selected {
                 tailwind::BLUE.c300
-            } else {
+            } else if i % 2 == 0 {
                 tailwind::BLUE.c400
+            } else {
+                tailwind::BLUE.c500
             };
             let unfilled = if i == self.selected {
                 tailwind::BLUE.c700
-            } else {
+            } else if i % 2 == 0 {
                 tailwind::BLUE.c800
+            } else {
+                tailwind::BLUE.c900
             };
-            let gauge = LineGauge::default()
-                .filled_symbol("▬")
-                .unfilled_symbol("▭")
-                .label(Line::from(format!("{:3.0}%", ratio * 100.0)))
-                .filled_style(filled)
-                .unfilled_style(unfilled)
+            let gauge = Gauge::default()
+                .label("")
+                .gauge_style(Style::new().fg(filled).bg(unfilled))
+                .use_unicode(true)
                 .ratio(ratio);
             frame.render_widget(gauge, gauge_area);
         }
