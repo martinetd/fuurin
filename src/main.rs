@@ -5,7 +5,7 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::palette::tailwind;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Gauge, Padding, Paragraph};
+use ratatui::widgets::{Block, Borders, LineGauge, Paragraph};
 use rodio::Source;
 
 #[derive(Parser)]
@@ -28,6 +28,7 @@ struct Stream {
 struct State {
     streams: Vec<Stream>,
     volume_granularity: u8,
+    longest_filename: usize,
     selected: usize,
     paused: bool,
 }
@@ -47,11 +48,14 @@ fn add_path(
     if start_volume == 0. {
         sink.pause();
     }
-    let filename = path
+    let filename: String = path
         .file_stem()
         .context("no filename?")?
         .to_string_lossy()
         .into();
+    if filename.len() > state.longest_filename {
+        state.longest_filename = filename.len();
+    }
     state.streams.push(Stream {
         filename,
         sink,
@@ -120,9 +124,9 @@ impl State {
         }
     }
     fn render(&self, frame: &mut ratatui::Frame) {
-        use Constraint::{Length, Min, Ratio};
-        let layout = Layout::vertical([Length(2), Min(5)]);
-        let [header, main] = frame.area().layout(&layout);
+        use Constraint::{Fill, Length, Min};
+        let layout = Layout::vertical([Length(2), Fill(1), Min(5), Fill(1)]);
+        let [header, _centering_pre, main, _centering_post] = frame.area().layout(&layout);
 
         // header
         let title = if self.paused {
@@ -134,30 +138,52 @@ impl State {
         frame.render_widget(widget, header);
 
         // scrollbars
-        // XXX get total height vs. len and only print max n lines centered around focused item if
-        // it doesn't fit, assume all fit for now
-        // also make sure all segments are identical, this doesn't do it.
+
+        // XXX get height to check if it doesn't fit and only pick x elements around
+        // selected
+        // Also use multiline gauge if there is lots of room?
         let num = self.streams.len();
         let mut layout = Vec::with_capacity(num);
         for _ in 0..num {
-            layout.push(Ratio(2, num as u32));
+            layout.push(Length(1));
         }
         let layout = Layout::vertical(&layout);
         let lines = main.layout_vec(&layout);
         for (i, line) in lines.into_iter().enumerate() {
             let stream = &self.streams[i];
-            let title = Line::from(stream.filename.as_str()).centered();
-            let title = Block::new()
+            let ratio = stream.volume as f64 / self.volume_granularity as f64;
+            let layout = Layout::horizontal([
+                Length(10),
+                Length(self.longest_filename as u16 + 1),
+                Min(5),
+                Length(10),
+            ]);
+            let [_padding_left, label_area, gauge_area, _padding_right] = line.layout(&layout);
+
+            let label = Block::new()
                 .borders(Borders::NONE)
-                .padding(Padding::vertical(0))
-                .title(title)
+                .title(stream.filename.as_str())
                 .fg(tailwind::SLATE.c200);
-            let gauge = Gauge::default()
-                .block(title)
-                .gauge_style(tailwind::BLUE.c800)
-                .ratio(stream.volume as f64 / self.volume_granularity as f64)
-                .use_unicode(true);
-            frame.render_widget(gauge, line);
+            frame.render_widget(label, label_area);
+
+            let filled = if i == self.selected {
+                tailwind::BLUE.c300
+            } else {
+                tailwind::BLUE.c400
+            };
+            let unfilled = if i == self.selected {
+                tailwind::BLUE.c700
+            } else {
+                tailwind::BLUE.c800
+            };
+            let gauge = LineGauge::default()
+                .filled_symbol("▬")
+                .unfilled_symbol("▭")
+                .label(Line::from(format!("{:3.0}%", ratio * 100.0)))
+                .filled_style(filled)
+                .unfilled_style(unfilled)
+                .ratio(ratio);
+            frame.render_widget(gauge, gauge_area);
         }
     }
 }
@@ -168,6 +194,7 @@ fn main() -> Result<()> {
         streams: vec![],
         volume_granularity: args.volume_granularity,
         selected: 0,
+        longest_filename: 0,
         paused: false,
     };
 
