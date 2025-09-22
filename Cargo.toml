@@ -6,7 +6,7 @@ license = "GPL-3.0-or-later"
 rust-version = "1.85.0"
 
 [dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 clap = { version = "4.5.45", features = ["derive"] }
 crossterm = "0.29.0"
 ratatui = "0.30.0-alpha.5"
